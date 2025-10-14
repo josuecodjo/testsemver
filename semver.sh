@@ -723,10 +723,21 @@ __command_changelog_from_tag_to_tag() {
             __start_marker="$(git rev-list --max-parents=0 develop | tail -n 1)"
         fi
     fi
+    
+    local __range
+    local __first_commit
+    __first_commit="$(git rev-list --max-parents=0 develop | tail -n 1)"
 
-    # Compute changelog between start point and the stable tag
+    if [[ "${__start_marker}" == "${__first_commit}" ]]; then
+        # Include the first commit itself
+        __range="${__start_marker} ${__stable_tag}"
+    else
+        __range="${__start_marker}..${__stable_tag}"
+    fi
+
+    # Compute changelog
     local __log_output
-    __log_output="$(git log "${__start_marker}..${__stable_tag}" \
+    __log_output="$(git log ${__range} \
         --pretty=format:"* [%h] %ad — %s (%an)" --date=short)"
 
 
