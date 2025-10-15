@@ -672,6 +672,7 @@ EOF
 
 __command_changelog_from_tag_to_tag() {
     local __stable_tag="${__opt_branch}"
+    local __develop_branch="develop"
 
     # Ensure tag exists
     if ! git rev-parse -q --verify "refs/tags/${__stable_tag}" >/dev/null; then
@@ -697,31 +698,33 @@ __command_changelog_from_tag_to_tag() {
 
     if [[ "${__is_hotfix}" == true ]]; then
         # Hotfix: start from corresponding release tag vX.Y.0
+        echo "__develop_branch: ${__develop_branch}"
         local __release_tag="$(__marker_tag_get_closest "hotfix/v${__major}.${__minor}.${__patch}" "${__develop_branch}" "v*-hotfix-start-marker")"
         if git rev-parse -q --verify "refs/tags/${__release_tag}" >/dev/null; then
             __start_marker="${__release_tag}"
         else
-            # fallback to first commit of develop if release tag not found
-            __start_marker="$(git rev-list --max-parents=0 develop | tail -n 1)"
+            echo "Error: something went wrong" >&2
+            exit 1
         fi
     else
         # Release: use previous start marker or first commit
-        local __marker_tags
-        __marker_tags="$(git tag --list "v*-release-start-marker" | sort -V)"
+        local __find_previous_release 
+        
+        __find_previous_release="$(git tag --list "v*-release-start-marker" | sort -V | awk -v tag="v${__version}-release-start-marker" '
+                    $0 == tag { exit }
+                    { prev = $0 }
+                    END { print prev }
+                ')"
 
-        local __prev_tag=""
-        while read -r __tag; do
-            if [[ "${__tag}" == "v${__version}-release-start-marker" ]]; then
-                __start_marker="${__prev_tag}"
-                break
-            fi
-            __prev_tag="${__tag}"
-        done <<< "${__marker_tags}"
 
-        # fallback if no previous marker found
-        if [[ -z "${__start_marker}" ]]; then
+        if [[ -z "$__find_previous_release" ]]; then
             __start_marker="$(git rev-list --max-parents=0 develop | tail -n 1)"
+        else
+            __start_marker="$(git rev-list "${__find_previous_release}..HEAD" --reverse | head -n 1)"
+            # __start_marker="${__find_previous_release}"
         fi
+
+
     fi
     
     local __range
