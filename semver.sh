@@ -674,79 +674,61 @@ __command_changelog_from_tag_to_tag() {
     local __stable_tag="${__opt_branch}"
     local __develop_branch="develop"
 
-    # Ensure tag exists
+    # Fail fast if tag does not exist
     if ! git rev-parse -q --verify "refs/tags/${__stable_tag}" >/dev/null; then
         __error_log "Tag '${__stable_tag}' does not exist"
     fi
 
-    # Determine version number (e.g. 1.3.0)
-    local __version
-    __version="$(echo "${__stable_tag}" | sed -E 's/^v([0-9]+\.[0-9]+\.[0-9]+)-.*/\1/')"
+    # Extract version numbers: major, minor, patch
+    local __version="${__stable_tag#v}"
+    __version="${__version%%-*}"
+    IFS='.' read -r __major __minor __patch <<<"$__version"
 
-    # Split version into components
-    local __major __minor __patch
-    IFS='.' read -r __major __minor __patch <<<"${__version}"
-
-    # Determine if this is a hotfix (patch != 0)
     local __is_hotfix=false
-    if [[ "${__patch}" != "0" ]]; then
-        __is_hotfix=true
-    fi
+    [[ "${__patch}" != "0" ]] && __is_hotfix=true
 
     # Determine start marker
-    local __start_marker=""
+    local __start_marker
+    local __first_commit
+    __first_commit="$(git rev-list --max-parents=0 "${__develop_branch}" | tail -n 1)"
 
-    if [[ "${__is_hotfix}" == true ]]; then
-        # Hotfix: start from corresponding release tag vX.Y.0
-        echo "__develop_branch: ${__develop_branch}"
+    if [[ "$__is_hotfix" == true ]]; then
+        # Hotfix: find closest hotfix start marker
         local __release_tag="$(__marker_tag_get_closest "hotfix/v${__major}.${__minor}.${__patch}" "${__develop_branch}" "v*-hotfix-start-marker")"
         if git rev-parse -q --verify "refs/tags/${__release_tag}" >/dev/null; then
             __start_marker="${__release_tag}"
         else
-            echo "Error: something went wrong" >&2
+            echo "Error: cannot find hotfix start marker" >&2
             exit 1
         fi
     else
-        # Release: use previous start marker or first commit
-        local __find_previous_release 
-        
-        __find_previous_release="$(git tag --list "v*-release-start-marker" | sort -V | awk -v tag="v${__version}-release-start-marker" '
-                    $0 == tag { exit }
-                    { prev = $0 }
-                    END { print prev }
-                ')"
-
-
-        if [[ -z "$__find_previous_release" ]]; then
-            __start_marker="$(git rev-list --max-parents=0 develop | tail -n 1)"
-        else
-            __start_marker="${__find_previous_release}"
-        fi
-
-
+        # Release: previous release-start-marker or first commit
+        local __prev_release
+        __prev_release="$(git tag --list "v*-release-start-marker" | sort -V | awk -v tag="v${__version}-release-start-marker" '
+            $0 == tag { exit } 
+            { prev = $0 } 
+            END { print prev }
+        ')"
+        __start_marker="${__prev_release:-$__first_commit}"
     fi
-    
-    local __range
-    local __first_commit
-    __first_commit="$(git rev-list --max-parents=0 develop | tail -n 1)"
 
+    # Compute range, include start commit if it's the first commit
+    local __range
     if [[ "${__start_marker}" == "${__first_commit}" ]]; then
-        # Include the first commit itself
         __range="${__start_marker} ${__stable_tag}"
     else
         __range="${__start_marker}..${__stable_tag}"
     fi
 
+    echo "range is: $__range"
     # Compute changelog
     local __log_output
-    __log_output="$(git log ${__range} \
-        --pretty=format:"* [%h] %ad — %s (%an)" --date=short)"
+    __log_output="$(git log ${__range} --pretty=format:"* [%h] %ad — %s (%an)" --date=short)"
 
-
-    echo "Changelog between ${__start_marker} → ${__stable_tag}: release ${__stable_tag}"
+    # Output
+    echo "Changelog between $__start_marker → $__stable_tag: release $__stable_tag"
     echo "=========================================================================="
-    echo "${__log_output}"
-
+    echo "$__log_output"
 }
 
 
