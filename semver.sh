@@ -720,8 +720,7 @@ __command_changelog_from_tag_to_tag() {
         if [[ -z "$__find_previous_release" ]]; then
             __start_marker="$(git rev-list --max-parents=0 develop | tail -n 1)"
         else
-            __start_marker="$(git rev-list "${__find_previous_release}..HEAD" --reverse | head -n 1)"
-            # __start_marker="${__find_previous_release}"
+            __start_marker="${__find_previous_release}"
         fi
 
 
