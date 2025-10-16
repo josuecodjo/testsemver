@@ -712,18 +712,9 @@ __command_changelog_from_tag_to_tag() {
         __start_marker="${__prev_release:-$__first_commit}"
     fi
 
-    # Compute range, include start commit if it's the first commit
-    local __range
-    if [[ "${__start_marker}" == "${__first_commit}" ]]; then
-        __range="${__start_marker} ${__stable_tag}"
-    else
-        __range="${__start_marker}..${__stable_tag}"
-    fi
-
-    echo "range is: $__range"
     # Compute changelog
     local __log_output
-    __log_output="$(git log ${__range} --pretty=format:"* [%h] %ad — %s (%an)" --date=short)"
+    __log_output="$(git log ${__start_marker}..${__stable_tag} --pretty=format:"* [%h] %ad — %s (%an)" --date=short)"
 
     # Output
     echo "Changelog between $__start_marker → $__stable_tag: release $__stable_tag"
